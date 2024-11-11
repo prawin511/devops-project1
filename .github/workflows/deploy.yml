@@ -1,0 +1,47 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Log in to Amazon ECR
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+
+      - name: Build Docker image
+        run: docker build -t my-app .
+
+      - name: Tag Docker image
+        run: docker tag my-app:latest ${{ secrets.ECR_REPOSITORY }}:latest
+
+      - name: Push Docker image to Amazon ECR
+        run: docker push ${{ secrets.ECR_REPOSITORY }}:latest
+
+      - name: Deploy to EC2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+        run: |
+          # Connect to EC2 instance and pull the latest Docker image
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_PUBLIC_IP }} << 'EOF'
+            docker pull $ECR_REPOSITORY:latest
+            docker stop my-app || true
+            docker rm my-app || true
+            docker run -d -p 80:5000 --name my-app $ECR_REPOSITORY:latest
+          EOF
