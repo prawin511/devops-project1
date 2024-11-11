@@ -1,47 +1,63 @@
-name: Deploy to AWS
+name: CI/CD for Dockerized Flask App
 
 on:
   push:
-    branches:
-      - master
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
 
 jobs:
-  build_and_deploy:
+  dockerbuild:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+    - name: Build The Docker Image
+      run: docker build . --file Dockerfile --tag workflow-test:$(date +%s)
 
-      - name: Log in to Amazon ECR
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-        run: |
-          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.ECR_REPOSITORY }}
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Build Docker image
-        run: docker build -t my-app .
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-      - name: Tag Docker image
-        run: docker tag my-app:latest ${{ secrets.ECR_REPOSITORY }}:latest
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flask
+        pip install pytest
 
-      - name: Push Docker image to Amazon ECR
-        run: docker push ${{ secrets.ECR_REPOSITORY }}:latest
+    - name: Run tests
+      run: |
+        pytest
 
-      - name: Deploy to EC2
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-        run: |
-          # Connect to EC2 instance and pull the latest Docker image
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_PUBLIC_IP }} << 'EOF'
-            docker pull $ECR_REPOSITORY:latest
-            docker stop my-app || true
-            docker rm my-app || true
-            docker run -d -p 80:5000 --name my-app $ECR_REPOSITORY:latest
-          EOF
+  build-and-publish:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Login to DockerHub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true  # Set to false if you don't want to push immediately
+        tags: ${{ secrets.DOCKER_USERNAME }}/srinuflask-app:latest
+
+    - name: Image digest
+      run: echo ${{ steps.build-and-publish.outputs.digest }}
