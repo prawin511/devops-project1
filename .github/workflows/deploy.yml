@@ -72,8 +72,9 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
-          timeout: '120s'
-          command_timeout: '60s'
+          timeout: '300s'  # Increased timeout for SSH connection
+          command_timeout: '120s'  # Increased command timeout
+          debug: true  # Enable debugging for more detailed logs
           script: echo "SSH connection successful"
 
       - name: Install Docker and configure user on EC2
@@ -83,8 +84,9 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
-          timeout: '300s'
-          command_timeout: '300s'
+          timeout: '300s'  # Increased timeout
+          command_timeout: '300s'  # Increased command timeout
+          debug: true  # Enable debugging
           script: |
             # Update and install Docker if not already installed
             sudo apt update
@@ -94,7 +96,7 @@ jobs:
             
             # Add 'ubuntu' user to docker group to allow Docker command execution without sudo
             sudo usermod -aG docker ubuntu
-            newgrp docker
+            newgrp docker  # Refresh group membership for the current session
 
       - name: SSH into EC2 and deploy Docker container
         uses: appleboy/ssh-action@v0.1.6
@@ -103,8 +105,9 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
-          timeout: '300s'
-          command_timeout: '300s'
+          timeout: '300s'  # Increased timeout
+          command_timeout: '300s'  # Increased command timeout
+          debug: true  # Enable debugging
           script: |
             # Stop any existing Docker containers
             docker stop my-container || true
