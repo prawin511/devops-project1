@@ -60,11 +60,21 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa  # This ensures the private key is readable by the process
-          # Optionally configure the host to skip verification of the host key
+          chmod 600 ~/.ssh/id_rsa  # Ensures the private key is readable by the process
           echo "Host *" >> ~/.ssh/config
           echo "  StrictHostKeyChecking no" >> ~/.ssh/config
           echo "  UserKnownHostsFile=/dev/null" >> ~/.ssh/config
+
+      - name: Test SSH Connection
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.EC2_PUBLIC_IP }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          port: 22
+          timeout: '120s'
+          command_timeout: '60s'
+          script: echo "SSH connection successful"
 
       - name: Install Docker and configure user on EC2
         uses: appleboy/ssh-action@v0.1.6
@@ -73,16 +83,18 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
+          timeout: '300s'
+          command_timeout: '300s'
           script: |
-            # Install Docker if not already installed
+            # Update and install Docker if not already installed
             sudo apt update
             sudo apt install -y docker.io
             sudo systemctl enable docker
             sudo systemctl start docker
             
-            # Add the 'ubuntu' user to the docker group to allow Docker command execution
+            # Add 'ubuntu' user to docker group to allow Docker command execution without sudo
             sudo usermod -aG docker ubuntu
-            newgrp docker  # Refresh group membership for the current session
+            newgrp docker
 
       - name: SSH into EC2 and deploy Docker container
         uses: appleboy/ssh-action@v0.1.6
@@ -91,8 +103,10 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
           port: 22
+          timeout: '300s'
+          command_timeout: '300s'
           script: |
-            # Stop any existing Docker containers (optional)
+            # Stop any existing Docker containers
             docker stop my-container || true
             docker rm my-container || true
 
